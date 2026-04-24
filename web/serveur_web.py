@@ -13,7 +13,7 @@ signaux = []
 
 class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # Silence les logs HTTP
+        pass
 
     def do_GET(self):
         if self.path == "/":
@@ -44,13 +44,16 @@ class WebHandler(BaseHTTPRequestHandler):
         #container { display: flex; height: calc(100vh - 60px); }
         #carte { flex: 2; }
         #panneau { flex: 1; padding: 15px; overflow-y: auto; background: #16213e; max-width: 350px; }
-        .signal { background: #0f3460; margin: 8px 0; padding: 10px; border-radius: 8px; border-left: 4px solid #e94560; font-size: 13px; }
+        .signal { background: #0f3460; margin: 8px 0; padding: 10px; border-radius: 8px; font-size: 13px; }
         .signal .freq { font-size: 16px; font-weight: bold; color: #e94560; }
-        .TRES_PROCHE { border-left-color: #ff0000; }
-        .PROCHE      { border-left-color: #ff8800; }
-        .MOYEN       { border-left-color: #ffff00; }
-        .LOIN        { border-left-color: #00ff00; }
+        .TRES_PROCHE { border-left: 4px solid #ff0000; }
+        .PROCHE      { border-left: 4px solid #ff8800; }
+        .MOYEN       { border-left: 4px solid #ffff00; }
+        .LOIN        { border-left: 4px solid #00ff00; }
         h3 { color: #e94560; }
+        #legende { margin-top: 20px; padding: 10px; background: #0f3460; border-radius: 8px; }
+        .leg-item { display: flex; align-items: center; margin: 5px 0; font-size: 12px; }
+        .leg-cercle { width: 15px; height: 15px; border-radius: 50%; margin-right: 8px; }
     </style>
 </head>
 <body>
@@ -60,17 +63,24 @@ class WebHandler(BaseHTTPRequestHandler):
         <div id="panneau">
             <h3>📡 Signaux détectés</h3>
             <div id="liste"></div>
+
+            <div id="legende">
+                <b>Légende distance :</b>
+                <div class="leg-item"><div class="leg-cercle" style="background:red"></div> TRES_PROCHE (&lt; 10m)</div>
+                <div class="leg-item"><div class="leg-cercle" style="background:orange"></div> PROCHE (10-50m)</div>
+                <div class="leg-item"><div class="leg-cercle" style="background:yellow"></div> MOYEN (50-200m)</div>
+                <div class="leg-item"><div class="leg-cercle" style="background:green"></div> LOIN (&gt; 200m)</div>
+            </div>
         </div>
     </div>
 
 <script>
-    // Initialise la carte sur IUT Montbéliard
     var carte = L.map('carte').setView([47.5072, 6.7961], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(carte);
 
-    // Marqueur position récepteur
+    // Marqueur récepteur
     L.marker([47.5072, 6.7961])
         .addTo(carte)
         .bindPopup('<b>📡 Récepteur SDR</b><br>IUT R&T Montbéliard')
@@ -85,6 +95,13 @@ class WebHandler(BaseHTTPRequestHandler):
         return 'green';
     }
 
+    function rayonDistance(distance) {
+        if (distance === 'TRES_PROCHE') return 15;
+        if (distance === 'PROCHE')      return 50;
+        if (distance === 'MOYEN')       return 150;
+        return 400;
+    }
+
     function actualiser() {
         fetch('/signaux')
         .then(r => r.json())
@@ -93,35 +110,43 @@ class WebHandler(BaseHTTPRequestHandler):
             liste.innerHTML = '';
 
             signaux.slice().reverse().forEach(function(s) {
-                // Carte — cercle autour du récepteur
                 var id = s.freq.toFixed(3);
-                if (!marqueurs[id]) {
-                    var rayon = s.distance === 'TRES_PROCHE' ? 20 :
-                                s.distance === 'PROCHE'      ? 80 :
-                                s.distance === 'MOYEN'       ? 200 : 500;
-                    marqueurs[id] = L.circle([47.5072, 6.7961], {
-                        color: couleurDistance(s.distance),
-                        fillOpacity: 0.3,
-                        radius: rayon
-                    }).addTo(carte)
-                    .bindPopup('<b>' + s.freq.toFixed(3) + ' MHz</b><br>RSSI: ' + s.rssi + ' dB<br>BW: ' + s.bw + ' kHz<br>Distance: ' + s.distance);
+
+                // Supprime l'ancien cercle si distance a changé
+                if (marqueurs[id]) {
+                    carte.removeLayer(marqueurs[id]);
                 }
+
+                // Nouveau cercle avec bonne taille
+                marqueurs[id] = L.circle([47.5072, 6.7961], {
+                    color:       couleurDistance(s.distance),
+                    fillColor:   couleurDistance(s.distance),
+                    fillOpacity: 0.3,
+                    radius:      rayonDistance(s.distance),
+                    weight:      2
+                }).addTo(carte)
+                .bindPopup(
+                    '<b>📡 ' + s.freq.toFixed(3) + ' MHz</b><br>' +
+                    '🔋 RSSI: ' + s.rssi + ' dB<br>' +
+                    '📶 BW: ' + s.bw + ' kHz<br>' +
+                    '📍 Distance: <b>' + s.distance + '</b><br>' +
+                    '🕐 ' + s.heure
+                );
 
                 // Panneau latéral
                 var div = document.createElement('div');
                 div.className = 'signal ' + s.distance;
                 div.innerHTML =
-                    '<div class="freq">' + s.freq.toFixed(3) + ' MHz</div>' +
-                    'RSSI: ' + s.rssi + ' dB<br>' +
-                    'BW: ' + s.bw + ' kHz<br>' +
-                    'Distance: <b>' + s.distance + '</b><br>' +
-                    '<small>' + s.heure + '</small>';
+                    '<div class="freq">📡 ' + s.freq.toFixed(3) + ' MHz</div>' +
+                    '🔋 RSSI: ' + s.rssi + ' dB<br>' +
+                    '📶 BW: ' + s.bw + ' kHz<br>' +
+                    '📍 Distance: <b>' + s.distance + '</b><br>' +
+                    '🕐 ' + s.heure;
                 liste.appendChild(div);
             });
         });
     }
 
-    // Actualise toutes les 2 secondes
     setInterval(actualiser, 2000);
     actualiser();
 </script>
@@ -132,7 +157,7 @@ class WebHandler(BaseHTTPRequestHandler):
 def ecouter_udp():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 5006))
-    print("Ecoute UDP sur port 5005...")
+    print("Ecoute UDP sur port 5006...")
 
     while True:
         data, _ = sock.recvfrom(1024)
@@ -140,9 +165,7 @@ def ecouter_udp():
         print(f"Reçu : {message}")
 
         try:
-            # Parse le message
-            # Format: SIGNAL_DETECTE | FREQ:868.018MHz | RSSI:-45.2dB | BW:39kHz | DISTANCE:TRES_PROCHE
-            parts = message.split("|")
+            parts    = message.split("|")
             freq     = float(parts[1].split(":")[1].replace("MHz","").strip())
             rssi     = float(parts[2].split(":")[1].replace("dB","").strip())
             bw       = float(parts[3].split(":")[1].replace("kHz","").strip())
@@ -159,7 +182,6 @@ def ecouter_udp():
             }
             signaux.append(signal)
 
-            # Garde seulement les 100 derniers
             if len(signaux) > 100:
                 signaux.pop(0)
 
@@ -167,12 +189,10 @@ def ecouter_udp():
             print(f"Erreur parsing: {e}")
 
 if __name__ == "__main__":
-    # Lance l'écoute UDP dans un thread
     t = threading.Thread(target=ecouter_udp)
     t.daemon = True
     t.start()
 
-    # Lance le serveur web
     print("Serveur web sur http://localhost:8080")
     print("Ouvre ton navigateur sur http://localhost:8080")
     HTTPServer(("0.0.0.0", 8080), WebHandler).serve_forever()
