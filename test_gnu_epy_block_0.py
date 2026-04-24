@@ -19,7 +19,8 @@ class blk(gr.sync_block):
         self.last_reset = time.time()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_ip = "127.0.0.1"
-        self.udp_port = 5005
+        # ✅ Envoie sur les deux ports
+        self.udp_ports = [5005, 5006]
         print(f"INIT OK | center_freq reel={self.center_freq/1e6}MHz")
 
     def estimer_distance(self, rssi):
@@ -53,7 +54,6 @@ class blk(gr.sync_block):
             rssi = np.max(vec_center)
             idx  = np.argmax(vec_center)
 
-            # ✅ Filtre bruit de fond
             if rssi < -87:
                 continue
 
@@ -68,7 +68,6 @@ class blk(gr.sync_block):
                 right += 1
             bw = (right - left) * (self.samp_rate / 1024)
 
-            # ✅ Filtre BW — rejette signaux trop larges
             if bw > 2000e3:
                 continue
 
@@ -90,6 +89,8 @@ class blk(gr.sync_block):
                 f"DISTANCE:{distance}"
             )
             print(message)
-            self.sock.sendto(message.encode(), (self.udp_ip, self.udp_port))
+            # ✅ Envoie sur port 5005 (client) ET port 5006 (serveur web)
+            for port in self.udp_ports:
+                self.sock.sendto(message.encode(), (self.udp_ip, port))
 
         return len(input_items[0])
