@@ -92,13 +92,13 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.uhd_usrp_source_0.set_samp_rate(samp_rate)
         self.uhd_usrp_source_0.set_time_unknown_pps(uhd.time_spec(0))
 
-        self.uhd_usrp_source_0.set_center_freq(868e6, 0)
+        self.uhd_usrp_source_0.set_center_freq(3500e6, 0)
         self.uhd_usrp_source_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_source_0.set_gain(30, 0)
         self.qtgui_waterfall_sink_x_0 = qtgui.waterfall_sink_c(
             1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
-            868e6, #fc
+            3500e6, #fc
             samp_rate, #bw
             "", #name
             1, #number of inputs
@@ -133,7 +133,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.qtgui_sink_x_0 = qtgui.sink_c(
             1024, #fftsize
             window.WIN_BLACKMAN_hARRIS, #wintype
-            868e6, #fc
+            3500e6, #fc
             samp_rate, #bw
             "", #name
             True, #plotfreq
@@ -151,7 +151,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
             1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
-            868e6, #fc
+            3500e6, #fc
             samp_rate, #bw
             "", #name
             1,
@@ -198,7 +198,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
             avg_alpha=0.1,
             average=True,
             shift=False)
-        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=868e6)
+        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=3500e6)
 
 
         ##################################################
@@ -226,9 +226,9 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.epy_block_0.samp_rate = self.samp_rate
         self.logpwrfft_x_0.set_sample_rate(self.samp_rate)
-        self.qtgui_freq_sink_x_0.set_frequency_range(868e6, self.samp_rate)
-        self.qtgui_sink_x_0.set_frequency_range(868e6, self.samp_rate)
-        self.qtgui_waterfall_sink_x_0.set_frequency_range(868e6, self.samp_rate)
+        self.qtgui_freq_sink_x_0.set_frequency_range(3500e6, self.samp_rate)
+        self.qtgui_sink_x_0.set_frequency_range(3500e6, self.samp_rate)
+        self.qtgui_waterfall_sink_x_0.set_frequency_range(3500e6, self.samp_rate)
         self.uhd_usrp_source_0.set_samp_rate(self.samp_rate)
 
 
