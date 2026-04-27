@@ -50,49 +50,55 @@ blocks:
   parameters:
     _source_code: "import numpy as np\nfrom gnuradio import gr\nimport time\nimport\
       \ socket\nfrom collections import deque\n\nclass blk(gr.sync_block):\n    def\
-      \ __init__(self, samp_rate=10e6, center_freq=850e6):\n        gr.sync_block.__init__(\n\
+      \ __init__(self, samp_rate=10e6, center_freq=868e6):\n        gr.sync_block.__init__(\n\
       \            self,\n            name='Systeme Secours Montagne',\n         \
       \   in_sig=[(np.float32, 1024)],\n            out_sig=None\n        )\n    \
       \    self.samp_rate = samp_rate\n        self.last_time = 0\n        self.detected_freqs\
       \ = deque(maxlen=100)\n        self.last_reset = time.time()\n        self.sock\
       \ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n        self.udp_ip =\
-      \ \"127.0.0.1\"\n        self.udp_ports = [5005, 5006]\n\n        self.bandes\
-      \ = [\n            {\"nom\": \"3G_900MHz\",  \"freq\": 900e6},\n           \
-      \ {\"nom\": \"4G_800MHz\",  \"freq\": 800e6},\n            {\"nom\": \"3G_2100MHz\"\
-      , \"freq\": 2100e6},\n            {\"nom\": \"4G_1800MHz\", \"freq\": 1800e6},\n\
-      \            {\"nom\": \"5G_3500MHz\", \"freq\": 3500e6},\n            {\"nom\"\
-      : \"LoRa_868MHz\",\"freq\": 868e6 + 4.5e6},\n            {\"nom\": \"WiFi_BT\"\
-      ,    \"freq\": 2400e6},\n        ]\n        self.bande_idx = 0\n        self.center_freq\
-      \ = self.bandes[0][\"freq\"]\n        self.last_scan = time.time()\n       \
-      \ self.scan_duree = 5\n\n        print(f\"INIT OK \u2014 Scan de {len(self.bandes)}\
-      \ bandes\")\n\n    def identifier_signal(self, freq_hz, bw_hz, rssi):\n    \
-      \    freq_mhz = freq_hz / 1e6\n\n        if 860 < freq_mhz < 872:\n        \
-      \    return \"LoRa_868MHz\"\n        elif 2395 < freq_mhz < 2490:\n        \
-      \    if rssi > -55:\n                return \"WiFi_2.4GHz\"\n            else:\n\
-      \                return \"Bluetooth_2.4GHz\"\n        elif 876 < freq_mhz <\
-      \ 915:\n            return \"3G_900MHz\"\n        elif 790 < freq_mhz < 820:\n\
-      \            return \"4G_800MHz\"\n        elif 1805 < freq_mhz < 1880:\n  \
-      \          return \"4G_1800MHz\"\n        # \u2705 Plage \xE9largie pour 3G\
-      \ 2100 MHz\n        elif 2090 < freq_mhz < 2180:\n            return \"3G_2100MHz\"\
-      \n        # \u2705 5G 3500 MHz\n        elif 3400 < freq_mhz < 3600:\n     \
-      \       return \"5G_3500MHz\"\n        else:\n            return \"SIGNAL_INCONNU\"\
-      \n\n    def estimer_distance(self, rssi):\n        if rssi > -60:\n        \
-      \    return \"TRES_PROCHE\"\n        elif rssi > -75:\n            return \"\
-      PROCHE\"\n        elif rssi > -90:\n            return \"MOYEN\"\n        else:\n\
-      \            return \"LOIN\"\n\n    def is_new_signal(self, freq):\n       \
-      \ if time.time() - self.last_reset > 60:\n            self.detected_freqs.clear()\n\
-      \            self.last_reset = time.time()\n        for f in self.detected_freqs:\n\
-      \            if abs(freq - f) < 50e3:\n                return False\n      \
-      \  self.detected_freqs.append(freq)\n        return True\n\n    def changer_bande(self):\n\
-      \        self.bande_idx = (self.bande_idx + 1) % len(self.bandes)\n        self.center_freq\
-      \ = self.bandes[self.bande_idx][\"freq\"]\n        print(f\"--- Scan : {self.bandes[self.bande_idx]['nom']}\
-      \ ({self.center_freq/1e6:.0f} MHz) ---\")\n\n    def work(self, input_items,\
-      \ output_items):\n        if time.time() - self.last_scan > self.scan_duree:\n\
-      \            self.changer_bande()\n            self.last_scan = time.time()\n\
-      \n        for vec in input_items[0]:\n            vec_smooth = np.convolve(vec,\
-      \ np.ones(5)/5, mode='same')\n\n            vec_center = vec_smooth.copy()\n\
-      \            vec_center[:50] = -999\n            vec_center[-50:] = -999\n\n\
-      \            rssi = np.max(vec_center)\n            idx  = np.argmax(vec_center)\n\
+      \ \"127.0.0.1\"\n        self.udp_ports = [5005, 5006]\n\n        # \u2705 Scan\
+      \ automatique de toutes les bandes\n        self.bandes = [\n            {\"\
+      nom\": \"LoRa_868MHz\",  \"freq\": 868e6 + 4.5e6},\n            {\"nom\": \"\
+      WiFi_BT\",      \"freq\": 2400e6},\n            {\"nom\": \"3G_900MHz\",   \
+      \ \"freq\": 900e6},\n            {\"nom\": \"4G_800MHz\",    \"freq\": 800e6},\n\
+      \            {\"nom\": \"3G_2100MHz\",   \"freq\": 2100e6},\n            {\"\
+      nom\": \"4G_1800MHz\",   \"freq\": 1800e6},\n            {\"nom\": \"5G_3500MHz\"\
+      ,   \"freq\": 3500e6},\n        ]\n        self.bande_idx  = 0\n        self.center_freq\
+      \ = self.bandes[0][\"freq\"]\n        self.last_scan  = time.time()\n      \
+      \  self.scan_duree = 10  # 10 secondes par bande\n        print(f\"INIT OK \u2014\
+      \ Scan universel de {len(self.bandes)} bandes\")\n        print(f\"Bande actuelle\
+      \ : {self.bandes[0]['nom']}\")\n\n    def identifier_signal(self, freq_hz, bw_hz,\
+      \ rssi):\n        freq_mhz = freq_hz / 1e6\n\n        # LoRa 868 MHz\n     \
+      \   if 860 < freq_mhz < 872:\n            if bw_hz < 150e3:\n              \
+      \  return \"LoRa_BW125kHz\"\n            elif bw_hz < 350e3:\n             \
+      \   return \"LoRa_BW250kHz\"\n            else:\n                return \"LoRa_BW500kHz\"\
+      \n\n        # WiFi et Bluetooth 2.4 GHz\n        elif 2395 < freq_mhz < 2490:\n\
+      \            if rssi > -55:\n                return \"WiFi_2.4GHz\"\n      \
+      \      else:\n                return \"Bluetooth_2.4GHz\"\n\n        # 3G 900\
+      \ MHz\n        elif 876 < freq_mhz < 915:\n            return \"3G_900MHz\"\n\
+      \n        # 4G 800 MHz\n        elif 790 < freq_mhz < 820:\n            return\
+      \ \"4G_800MHz\"\n\n        # 4G 1800 MHz\n        elif 1805 < freq_mhz < 1880:\n\
+      \            return \"4G_1800MHz\"\n\n        # 3G 2100 MHz\n        elif 2090\
+      \ < freq_mhz < 2180:\n            return \"3G_2100MHz\"\n\n        # 5G 3500\
+      \ MHz\n        elif 3400 < freq_mhz < 3600:\n            return \"5G_3500MHz\"\
+      \n\n        return \"SIGNAL_INCONNU\"\n\n    def estimer_distance(self, rssi):\n\
+      \        if rssi > -60:\n            return \"TRES_PROCHE\"\n        elif rssi\
+      \ > -75:\n            return \"PROCHE\"\n        elif rssi > -90:\n        \
+      \    return \"MOYEN\"\n        else:\n            return \"LOIN\"\n\n    def\
+      \ is_new_signal(self, freq):\n        if time.time() - self.last_reset > 60:\n\
+      \            self.detected_freqs.clear()\n            self.last_reset = time.time()\n\
+      \        for f in self.detected_freqs:\n            if abs(freq - f) < 50e3:\n\
+      \                return False\n        self.detected_freqs.append(freq)\n  \
+      \      return True\n\n    def changer_bande(self):\n        self.bande_idx =\
+      \ (self.bande_idx + 1) % len(self.bandes)\n        self.center_freq = self.bandes[self.bande_idx][\"\
+      freq\"]\n        print(f\"--- Scan : {self.bandes[self.bande_idx]['nom']} ({self.center_freq/1e6:.0f}\
+      \ MHz) ---\")\n\n    def work(self, input_items, output_items):\n        # \u2705\
+      \ Change de bande toutes les 10 secondes\n        if time.time() - self.last_scan\
+      \ > self.scan_duree:\n            self.changer_bande()\n            self.last_scan\
+      \ = time.time()\n\n        for vec in input_items[0]:\n            vec_smooth\
+      \ = np.convolve(vec, np.ones(5)/5, mode='same')\n\n            vec_center =\
+      \ vec_smooth.copy()\n            vec_center[:50] = -999\n            vec_center[-50:]\
+      \ = -999\n\n            rssi = np.max(vec_center)\n            idx  = np.argmax(vec_center)\n\
       \n            if rssi < -95:\n                continue\n\n            freq =\
       \ self.center_freq + (idx - 512) * (self.samp_rate / 1024)\n\n            threshold\
       \ = rssi - 6.0\n            left = idx\n            right = idx\n          \
@@ -103,7 +109,7 @@ blocks:
       \       if not self.is_new_signal(freq):\n                continue\n\n     \
       \       now = time.time()\n            if now - self.last_time < 0.3:\n    \
       \            continue\n            self.last_time = now\n\n            distance\
-      \ = self.estimer_distance(rssi)\n            signal_type = self.identifier_signal(freq,\
+      \    = self.estimer_distance(rssi)\n            signal_type = self.identifier_signal(freq,\
       \ bw, rssi)\n\n            message = (\n                f\"SIGNAL_DETECTE |\
       \ \"\n                f\"TYPE:{signal_type} | \"\n                f\"FREQ:{freq/1e6:.3f}MHz\
       \ | \"\n                f\"RSSI:{rssi:.1f}dB | \"\n                f\"BW:{bw/1e3:.0f}kHz\
@@ -113,14 +119,14 @@ blocks:
       \ len(input_items[0])\n"
     affinity: ''
     alias: ''
-    center_freq: 850e6
+    center_freq: '868000000.0'
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
     samp_rate: samp_rate
   states:
     _io_cache: ('Systeme Secours Montagne', 'blk', [('samp_rate', '10000000.0'), ('center_freq',
-      '850000000.0')], [('0', 'float', 1024)], [], '', ['center_freq', 'samp_rate'])
+      '868000000.0')], [('0', 'float', 1024)], [], '', ['center_freq', 'samp_rate'])
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -181,7 +187,7 @@ blocks:
     color9: '"dark green"'
     comment: ''
     ctrlpanel: 'False'
-    fc: 850e6
+    fc: '868000000'
     fftsize: '1024'
     freqhalf: 'True'
     grid: 'False'
@@ -238,7 +244,7 @@ blocks:
     alias: ''
     bw: samp_rate
     comment: ''
-    fc: 850e6
+    fc: '868000000'
     fftsize: '1024'
     gui_hint: ''
     maxoutbuf: '0'
@@ -288,7 +294,7 @@ blocks:
     color8: '0'
     color9: '0'
     comment: ''
-    fc: 850e6
+    fc: '868000000'
     fftsize: '1024'
     freqhalf: 'True'
     grid: 'False'
@@ -390,7 +396,7 @@ blocks:
     bw7: '0'
     bw8: '0'
     bw9: '0'
-    center_freq0: 850e6
+    center_freq0: '868000000'
     center_freq1: '0'
     center_freq10: '0'
     center_freq11: '0'
