@@ -50,7 +50,7 @@ blocks:
   parameters:
     _source_code: "import numpy as np\nfrom gnuradio import gr\nimport time\nimport\
       \ socket\nfrom collections import deque\n\nclass blk(gr.sync_block):\n    def\
-      \ __init__(self, samp_rate=10e6, center_freq=868e6):\n        gr.sync_block.__init__(\n\
+      \ __init__(self, samp_rate=10e6, center_freq=850e6):\n        gr.sync_block.__init__(\n\
       \            self,\n            name='Systeme Secours Montagne',\n         \
       \   in_sig=[(np.float32, 1024)],\n            out_sig=None\n        )\n    \
       \    self.samp_rate = samp_rate\n        self.last_time = 0\n        self.detected_freqs\
@@ -113,14 +113,14 @@ blocks:
       \ len(input_items[0])\n"
     affinity: ''
     alias: ''
-    center_freq: 3500e6
+    center_freq: 850e6
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
     samp_rate: samp_rate
   states:
     _io_cache: ('Systeme Secours Montagne', 'blk', [('samp_rate', '10000000.0'), ('center_freq',
-      '868000000.0')], [('0', 'float', 1024)], [], '', ['center_freq', 'samp_rate'])
+      '850000000.0')], [('0', 'float', 1024)], [], '', ['center_freq', 'samp_rate'])
     bus_sink: false
     bus_source: false
     bus_structure: null
@@ -181,7 +181,7 @@ blocks:
     color9: '"dark green"'
     comment: ''
     ctrlpanel: 'False'
-    fc: 3500e6
+    fc: 850e6
     fftsize: '1024'
     freqhalf: 'True'
     grid: 'False'
@@ -238,7 +238,7 @@ blocks:
     alias: ''
     bw: samp_rate
     comment: ''
-    fc: 3500e6
+    fc: 850e6
     fftsize: '1024'
     gui_hint: ''
     maxoutbuf: '0'
@@ -288,7 +288,7 @@ blocks:
     color8: '0'
     color9: '0'
     comment: ''
-    fc: 3500e6
+    fc: 850e6
     fftsize: '1024'
     freqhalf: 'True'
     grid: 'False'
@@ -390,7 +390,7 @@ blocks:
     bw7: '0'
     bw8: '0'
     bw9: '0'
-    center_freq0: 3500e6
+    center_freq0: 850e6
     center_freq1: '0'
     center_freq10: '0'
     center_freq11: '0'

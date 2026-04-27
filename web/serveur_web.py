@@ -2,11 +2,10 @@ import socket
 import threading
 import json
 import time
-import math
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-LATITUDE  = 47.5105
-LONGITUDE = 6.7978
+LATITUDE  = 47.5072
+LONGITUDE = 6.7961
 
 signaux = []
 
@@ -48,6 +47,7 @@ class WebHandler(BaseHTTPRequestHandler):
         .signal .freq  { font-size: 15px; font-weight: bold; color: #e94560; }
         .signal .dist  { font-size: 14px; font-weight: bold; margin: 5px 0; }
         .signal .instruction { margin-top: 8px; padding: 8px; border-radius: 6px; font-size: 13px; font-weight: bold; }
+        .signal .directions { margin-top: 8px; padding: 8px; background: #1a1a2e; border-radius: 6px; font-size: 12px; line-height: 1.8; }
         .TRES_PROCHE { border-left: 5px solid #ff0000; }
         .PROCHE      { border-left: 5px solid #ff8800; }
         .MOYEN       { border-left: 5px solid #ffff00; }
@@ -55,7 +55,6 @@ class WebHandler(BaseHTTPRequestHandler):
         .instr_urgence { background: #c0392b; color: white; }
         .instr_proche  { background: #e67e22; color: white; }
         .instr_moyen   { background: #f39c12; color: #1a1a2e; }
-        .instr_loin    { background: #27ae60; color: white; }
         #alerte_urgente {
             display: none;
             background: #c0392b;
@@ -73,7 +72,7 @@ class WebHandler(BaseHTTPRequestHandler):
             100% { opacity: 1; }
         }
         #resume { background: #0f3460; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
-        #aucun_signal { background: #0f3460; padding: 15px; border-radius: 8px; text-align: center; color: #aaa; display: none; }
+        #aucun_signal { background: #0f3460; padding: 15px; border-radius: 8px; text-align: center; color: #aaa; margin-top: 10px; }
         #legende { margin-top: 15px; padding: 10px; background: #0f3460; border-radius: 8px; font-size: 12px; }
         .leg-item { display: flex; align-items: center; margin: 4px 0; }
         .leg-c { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
@@ -89,35 +88,51 @@ class WebHandler(BaseHTTPRequestHandler):
             <div id="resume">En attente de signaux...</div>
             <div id="aucun_signal">
                 ✅ Aucun signal proche détecté<br>
-                <small>Les antennes opérateurs sont filtrées</small>
+                <small>En attente d'un émetteur à moins de 200m...</small>
             </div>
             <div id="liste"></div>
             <div id="legende">
                 <b>Légende :</b>
                 <div class="leg-item"><div class="leg-c" style="background:red"></div> &lt; 25m — Fouiller immédiatement</div>
                 <div class="leg-item"><div class="leg-c" style="background:orange"></div> 25-100m — Se rapprocher</div>
-                <div class="leg-item"><div class="leg-c" style="background:yellow"></div> 100-350m — Zone de recherche</div>
-                <div class="leg-item"><div class="leg-c" style="background:green"></div> &gt; 350m — Zone élargie</div>
+                <div class="leg-item"><div class="leg-c" style="background:yellow"></div> 100-200m — Zone de recherche</div>
                 <br>
-                <small>⚠️ Signaux &gt; 600m filtrés (antennes opérateurs)</small>
+                <small>⚠️ Antennes opérateurs filtrées (&gt; 200m)</small>
             </div>
         </div>
     </div>
 
 <script>
-    var carte = L.map('carte').setView([47.5105, 6.7978], 16);
+    var LAT = 47.5072;
+    var LON = 6.7961;
+
+    var carte = L.map('carte').setView([LAT, LON], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(carte);
 
     var iconRecepteur = L.divIcon({ html: '📡', iconSize: [30,30], className: '' });
-    L.marker([47.5105, 6.7978], {icon: iconRecepteur})
+    L.marker([LAT, LON], {icon: iconRecepteur})
         .addTo(carte)
-        .bindPopup('<b>📡 Récepteur SDR</b><br>23 Rue Maurice Ravel, Montbéliard')
+        .bindPopup('<b>📡 Récepteur SDR</b><br>IUT R&T Montbéliard')
         .openPopup();
 
-    var marqueurs = {};
-    var cercles   = {};
+    var marqueurs  = {};
+    var cercles    = {};
+    var fleches    = {};
+    var pointsCher = {};
+
+    // 8 directions avec angles et noms
+    var directions = [
+        { nom: '↑ Nord',      angle: 0   },
+        { nom: '↗ Nord-Est',  angle: 45  },
+        { nom: '→ Est',       angle: 90  },
+        { nom: '↘ Sud-Est',   angle: 135 },
+        { nom: '↓ Sud',       angle: 180 },
+        { nom: '↙ Sud-Ouest', angle: 225 },
+        { nom: '← Ouest',     angle: 270 },
+        { nom: '↖ Nord-Ouest',angle: 315 }
+    ];
 
     function distanceMetres(rssi) {
         if (rssi > -40) return 5;
@@ -126,16 +141,13 @@ class WebHandler(BaseHTTPRequestHandler):
         if (rssi > -70) return 50;
         if (rssi > -75) return 100;
         if (rssi > -80) return 200;
-        if (rssi > -85) return 350;
-        if (rssi > -90) return 500;
-        return 800;
+        return 350;
     }
 
     function couleur(rssi) {
         if (rssi > -60) return 'red';
         if (rssi > -75) return 'orange';
-        if (rssi > -85) return 'yellow';
-        return 'green';
+        return 'yellow';
     }
 
     function instruction(rssi, dist) {
@@ -145,15 +157,11 @@ class WebHandler(BaseHTTPRequestHandler):
         };
         if (rssi > -75) return {
             classe: 'instr_proche',
-            texte:  '⚠️ Personne à ~' + dist + 'm. Avancez et scannez la zone.'
-        };
-        if (rssi > -85) return {
-            classe: 'instr_moyen',
-            texte:  '🔍 Zone de recherche ~' + dist + 'm. Déployez les équipes en cercle.'
+            texte:  '⚠️ Personne à ~' + dist + 'm. Suivez une des flèches !'
         };
         return {
-            classe: 'instr_loin',
-            texte:  '📡 Signal à ~' + dist + 'm. Rapprochez le récepteur.'
+            classe: 'instr_moyen',
+            texte:  '🔍 Zone ~' + dist + 'm. Explorez les 8 directions.'
         };
     }
 
@@ -167,32 +175,51 @@ class WebHandler(BaseHTTPRequestHandler):
         return '📡';
     }
 
+    // Calcule la position GPS au bout d'une flèche
+    function positionDirection(lat, lon, distMetres, angleDegres) {
+        var R = 111320; // mètres par degré
+        var angleRad = angleDegres * Math.PI / 180;
+        var dLat = (distMetres * Math.cos(angleRad)) / R;
+        var dLon = (distMetres * Math.sin(angleRad)) / (R * Math.cos(lat * Math.PI / 180));
+        return [lat + dLat, lon + dLon];
+    }
+
+    function nettoyerCouche(obj) {
+        Object.keys(obj).forEach(function(id) {
+            if (Array.isArray(obj[id])) {
+                obj[id].forEach(function(l) { carte.removeLayer(l); });
+            } else {
+                carte.removeLayer(obj[id]);
+            }
+        });
+    }
+
     function actualiser() {
         fetch('/signaux')
         .then(r => r.json())
         .then(signaux => {
-            var liste      = document.getElementById('liste');
-            var resume     = document.getElementById('resume');
-            var alerte     = document.getElementById('alerte_urgente');
-            var aucun      = document.getElementById('aucun_signal');
+            var liste     = document.getElementById('liste');
+            var resume    = document.getElementById('resume');
+            var alerte    = document.getElementById('alerte_urgente');
+            var aucun     = document.getElementById('aucun_signal');
             liste.innerHTML = '';
-            var urgence    = false;
-            var nbAffiche  = 0;
-            var typesVus   = {};
+            var urgence   = false;
+            var nbAffiche = 0;
+            var typesVus  = {};
 
-            // Nettoie les anciens marqueurs
-            Object.keys(cercles).forEach(function(id) {
-                carte.removeLayer(cercles[id]);
-                if (marqueurs[id]) carte.removeLayer(marqueurs[id]);
-            });
-            cercles   = {};
-            marqueurs = {};
+            // Nettoie tout
+            nettoyerCouche(cercles);
+            nettoyerCouche(fleches);
+            nettoyerCouche(pointsCher);
+            Object.keys(marqueurs).forEach(function(id) { carte.removeLayer(marqueurs[id]); });
+            cercles    = {};
+            fleches    = {};
+            pointsCher = {};
+            marqueurs  = {};
 
             signaux.slice().reverse().forEach(function(s) {
                 var dist = distanceMetres(s.rssi);
-
-                // ✅ Filtre — ignore les signaux trop lointains (antennes opérateurs)
-                if (dist > 600) return;
+                if (dist > 200) return;
 
                 nbAffiche++;
                 var col   = couleur(s.rssi);
@@ -202,39 +229,54 @@ class WebHandler(BaseHTTPRequestHandler):
                 typesVus[s.type] = (typesVus[s.type] || 0) + 1;
                 if (s.rssi > -60) urgence = true;
 
-                // Cercle zone de recherche
-                cercles[id] = L.circle([47.5105, 6.7978], {
+                // ✅ Cercle zone de recherche
+                cercles[id] = L.circle([LAT, LON], {
                     color:       col,
                     fillColor:   col,
-                    fillOpacity: 0.2,
+                    fillOpacity: 0.15,
                     radius:      dist,
-                    weight:      3,
-                    dashArray:   dist > 200 ? '8,5' : null
+                    weight:      3
                 }).addTo(carte)
                 .bindPopup(
                     '<b>🆘 ZONE DE RECHERCHE</b><br>' +
-                    iconeType(s.type) + ' ' + s.type + '<br>' +
                     '📡 ' + s.freq.toFixed(3) + ' MHz<br>' +
                     '🔋 RSSI: ' + s.rssi + ' dB<br>' +
-                    '📍 Distance: ~' + dist + 'm<br>' +
-                    '🕐 ' + s.heure + '<br><br>' +
-                    '<b style="color:orange">' + instr.texte + '</b>'
+                    '📍 Distance: ~' + dist + 'm'
                 );
 
-                // Icône personne au bord du cercle
-                var latP  = 47.5105 + (dist / 111320);
-                var iconP = L.divIcon({
-                    html: dist <= 25 ? '🆘' : (dist <= 100 ? '⚠️' : '👤'),
-                    iconSize: [25,25],
-                    className: ''
+                // ✅ 8 flèches dans toutes les directions
+                fleches[id]    = [];
+                pointsCher[id] = [];
+                var dirTexte   = '<b>🧭 Directions à explorer :</b><br>';
+
+                directions.forEach(function(dir) {
+                    var pos = positionDirection(LAT, LON, dist, dir.angle);
+
+                    // Flèche (ligne)
+                    var ligne = L.polyline([[LAT, LON], pos], {
+                        color:  col,
+                        weight: 3,
+                        opacity: 0.8
+                    }).addTo(carte);
+                    fleches[id].push(ligne);
+
+                    // Point "Vérifier ici" au bout de la flèche
+                    var iconDir = L.divIcon({
+                        html: '<div style="background:' + col + ';color:black;padding:2px 5px;border-radius:4px;font-size:10px;font-weight:bold;white-space:nowrap;">' + dir.nom + '</div>',
+                        iconSize: [70, 20],
+                        className: ''
+                    });
+                    var ptCher = L.marker(pos, {icon: iconDir})
+                        .addTo(carte)
+                        .bindPopup(
+                            '<b>' + dir.nom + '</b><br>' +
+                            '🔍 Vérifier ici<br>' +
+                            '~' + dist + 'm dans cette direction'
+                        );
+                    pointsCher[id].push(ptCher);
+
+                    dirTexte += dir.nom + ' (~' + dist + 'm)<br>';
                 });
-                marqueurs[id] = L.marker([latP, 6.7978], {icon: iconP})
-                    .addTo(carte)
-                    .bindPopup(
-                        '<b>Zone probable</b><br>' +
-                        '~' + dist + 'm du récepteur<br>' +
-                        s.freq.toFixed(3) + ' MHz'
-                    );
 
                 // Panneau latéral
                 var div = document.createElement('div');
@@ -245,21 +287,19 @@ class WebHandler(BaseHTTPRequestHandler):
                     '<div class="dist" style="color:' + col + '">📍 ~' + dist + ' mètres</div>' +
                     '🔋 RSSI: ' + s.rssi + ' dB | 📶 BW: ' + s.bw + ' kHz<br>' +
                     '🕐 ' + s.heure +
-                    '<div class="instruction ' + instr.classe + '">' + instr.texte + '</div>';
+                    '<div class="instruction ' + instr.classe + '">' + instr.texte + '</div>' +
+                    '<div class="directions">' + dirTexte + '</div>';
                 liste.appendChild(div);
             });
 
             // Résumé
-            var resumeHtml = '<b>📊 ' + nbAffiche + ' signal(s) affiché(s)</b><br>';
+            var resumeHtml = '<b>📊 ' + nbAffiche + ' signal(s) proche(s)</b><br>';
             Object.keys(typesVus).forEach(function(t) {
                 resumeHtml += iconeType(t) + ' ' + t + ' : ' + typesVus[t] + '<br>';
             });
             resume.innerHTML = resumeHtml;
 
-            // Aucun signal proche
-            aucun.style.display = nbAffiche === 0 ? 'block' : 'none';
-
-            // Alerte urgente
+            aucun.style.display  = nbAffiche === 0 ? 'block' : 'none';
             alerte.style.display = urgence ? 'block' : 'none';
         });
     }

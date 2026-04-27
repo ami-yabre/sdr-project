@@ -5,7 +5,7 @@ import socket
 from collections import deque
 
 class blk(gr.sync_block):
-    def __init__(self, samp_rate=10e6, center_freq=868e6):
+    def __init__(self, samp_rate=10e6, center_freq=850e6):
         gr.sync_block.__init__(
             self,
             name='Systeme Secours Montagne',
