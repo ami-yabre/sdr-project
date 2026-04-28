@@ -5,7 +5,7 @@ import socket
 from collections import deque
 
 class blk(gr.sync_block):
-    def __init__(self, samp_rate=10e6, center_freq=868e6):
+    def __init__(self, samp_rate=10e6, center_freq=868e6, usrp_source=None):
         gr.sync_block.__init__(
             self,
             name='Systeme Secours Montagne',
@@ -19,47 +19,47 @@ class blk(gr.sync_block):
         self.sock        = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_ip      = "127.0.0.1"
         self.udp_ports   = [5005, 5006]
-        self.usrp_source = None
+        self.usrp_source = usrp_source
+
+        if usrp_source is not None:
+            print("Liaison materielle USRP etablie OK")
+        else:
+            print("USRP non connecte - mode calcul")
 
         self.bandes = [
-            {"nom": "LoRa_868MHz",  "freq": 868e6 + 4.5e6},
-            {"nom": "WiFi_BT",      "freq": 2400e6},
-            {"nom": "3G_900MHz",    "freq": 900e6},
-            {"nom": "4G_800MHz",    "freq": 800e6},
-            {"nom": "3G_2100MHz",   "freq": 2100e6},
-            {"nom": "4G_1800MHz",   "freq": 1800e6},
-            {"nom": "5G_3500MHz",   "freq": 3500e6},
+            {"nom": "LoRa_868MHz",  "freq": 868e6,   "offset": 4.5e6},
+            {"nom": "WiFi_BT",      "freq": 2400e6,  "offset": 0},
+            {"nom": "3G_900MHz",    "freq": 900e6,   "offset": 0},
+            {"nom": "4G_800MHz",    "freq": 800e6,   "offset": 0},
+            {"nom": "3G_2100MHz",   "freq": 2100e6,  "offset": 0},
+            {"nom": "4G_1800MHz",   "freq": 1800e6,  "offset": 0},
+            {"nom": "5G_3500MHz",   "freq": 3500e6,  "offset": 0},
         ]
         self.bande_idx   = 0
         self.center_freq = self.bandes[0]["freq"]
+        self.offset      = self.bandes[0]["offset"]
         self.last_scan   = time.time()
         self.scan_duree  = 10
-
-        print(f"--- SYSTÈME DE SECOURS IUT MONTBÉLIARD ---")
-        print(f"Scan automatique activé sur {len(self.bandes)} bandes.")
+        print(f"INIT OK - Scan universel de {len(self.bandes)} bandes")
         print(f"Bande actuelle : {self.bandes[0]['nom']}")
-
-    def set_usrp(self, usrp_source):
-        """Liaison avec le USRP pour changer la fréquence automatiquement"""
-        self.usrp_source = usrp_source
-        print("Liaison matérielle USRP établie ✅")
 
     def changer_bande(self):
         self.bande_idx   = (self.bande_idx + 1) % len(self.bandes)
-        self.center_freq = self.bandes[self.bande_idx]["freq"]
+        bande            = self.bandes[self.bande_idx]
+        self.center_freq = bande["freq"]
+        self.offset      = bande["offset"]
 
-        # ✅ Change la fréquence du USRP physique
         if self.usrp_source is not None:
             try:
                 self.usrp_source.set_center_freq(self.center_freq, 0)
+                print(f"--- USRP -> {bande['nom']} ({self.center_freq/1e6:.0f} MHz) OK ---")
             except Exception as e:
-                print(f"Erreur changement fréquence USRP: {e}")
-
-        print(f"--- Scan : {self.bandes[self.bande_idx]['nom']} ({self.center_freq/1e6:.0f} MHz) ---")
+                print(f"--- Erreur USRP: {e} ---")
+        else:
+            print(f"--- Scan : {bande['nom']} ({self.center_freq/1e6:.0f} MHz) ---")
 
     def identifier_signal(self, freq_hz, bw_hz, rssi):
         freq_mhz = freq_hz / 1e6
-
         if 860 < freq_mhz < 872:
             if bw_hz < 150e3:
                 return "LoRa_BW125kHz"
@@ -68,15 +68,12 @@ class blk(gr.sync_block):
             else:
                 return "LoRa_BW500kHz"
         elif 2395 < freq_mhz < 2490:
-            if rssi > -55:
-                return "WiFi_2.4GHz"
-            else:
-                return "Bluetooth_2.4GHz"
+            return "WiFi_2.4GHz" if rssi > -55 else "Bluetooth_2.4GHz"
         elif 876 < freq_mhz < 915:
             return "3G_900MHz"
         elif 790 < freq_mhz < 820:
             return "4G_800MHz"
-        elif 1805 < freq_mhz < 1880:
+        elif 1790 < freq_mhz < 1880:
             return "4G_1800MHz"
         elif 2090 < freq_mhz < 2180:
             return "3G_2100MHz"
@@ -104,14 +101,12 @@ class blk(gr.sync_block):
         return True
 
     def work(self, input_items, output_items):
-        # ✅ Change de bande toutes les 10 secondes
         if time.time() - self.last_scan > self.scan_duree:
             self.changer_bande()
             self.last_scan = time.time()
 
         for vec in input_items[0]:
             vec_smooth = np.convolve(vec, np.ones(5)/5, mode='same')
-
             vec_center = vec_smooth.copy()
             vec_center[:50] = -999
             vec_center[-50:] = -999
@@ -122,7 +117,7 @@ class blk(gr.sync_block):
             if rssi < -95:
                 continue
 
-            freq = self.center_freq + (idx - 512) * (self.samp_rate / 1024)
+            freq = (self.center_freq + self.offset) + (idx - 512) * (self.samp_rate / 1024)
 
             threshold = rssi - 6.0
             left = idx

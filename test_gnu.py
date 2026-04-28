@@ -198,8 +198,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
             avg_alpha=0.1,
             average=True,
             shift=False)
-        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=868000000.0)
-        self.epy_block_0.set_usrp(self.uhd_usrp_source_0)
+        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=868000000.0, usrp_source=self.uhd_usrp_source_0)
 
 
         ##################################################
