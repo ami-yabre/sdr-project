@@ -2,10 +2,14 @@ import socket
 import threading
 import json
 import time
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gps_reader import GPSReader
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-LATITUDE  = 47.5072
-LONGITUDE = 6.7961
+# ✅ GPS en temps réel
+gps = GPSReader()
 
 signaux = []
 
@@ -25,6 +29,17 @@ class WebHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(signaux[-50:]).encode())
+        elif self.path == "/position":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            lat, lon, fix = gps.get_position()
+            self.wfile.write(json.dumps({
+                "lat": lat,
+                "lon": lon,
+                "fix": fix
+            }).encode())
 
     def page_html(self):
         return """
@@ -38,7 +53,8 @@ class WebHandler(BaseHTTPRequestHandler):
     <style>
         body { margin: 0; font-family: Arial; background: #1a1a2e; color: white; }
         #titre { padding: 12px; text-align: center; background: #c0392b; font-size: 18px; font-weight: bold; }
-        #container { display: flex; height: calc(100vh - 50px); }
+        #gps_status { padding: 6px; text-align: center; background: #0f3460; font-size: 13px; }
+        #container { display: flex; height: calc(100vh - 80px); }
         #carte { flex: 2; }
         #panneau { flex: 1; padding: 15px; overflow-y: auto; background: #16213e; max-width: 380px; }
         h3 { color: #e94560; margin-top: 0; }
@@ -80,6 +96,7 @@ class WebHandler(BaseHTTPRequestHandler):
 </head>
 <body>
     <div id="titre">🆘 SDR - Système de Localisation et Sauvetage — IUT Montbéliard</div>
+    <div id="gps_status">📍 GPS : En attente de fix...</div>
     <div id="container">
         <div id="carte"></div>
         <div id="panneau">
@@ -105,16 +122,18 @@ class WebHandler(BaseHTTPRequestHandler):
 <script>
     var LAT = 47.5072;
     var LON = 6.7961;
+    var gps_fix = false;
 
     var carte = L.map('carte').setView([LAT, LON], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(carte);
 
+    // ✅ Marqueur récepteur GPS qui se déplace
     var iconRecepteur = L.divIcon({ html: '📡', iconSize: [30,30], className: '' });
-    L.marker([LAT, LON], {icon: iconRecepteur})
+    var marqueurRecepteur = L.marker([LAT, LON], {icon: iconRecepteur})
         .addTo(carte)
-        .bindPopup('<b>📡 Récepteur SDR</b><br>IUT R&T Montbéliard')
+        .bindPopup('<b>📡 Récepteur SDR</b><br>Position GPS en temps réel')
         .openPopup();
 
     var marqueurs  = {};
@@ -122,16 +141,15 @@ class WebHandler(BaseHTTPRequestHandler):
     var fleches    = {};
     var pointsCher = {};
 
-    // 8 directions avec angles et noms
     var directions = [
-        { nom: '↑ Nord',      angle: 0   },
-        { nom: '↗ Nord-Est',  angle: 45  },
-        { nom: '→ Est',       angle: 90  },
-        { nom: '↘ Sud-Est',   angle: 135 },
-        { nom: '↓ Sud',       angle: 180 },
-        { nom: '↙ Sud-Ouest', angle: 225 },
-        { nom: '← Ouest',     angle: 270 },
-        { nom: '↖ Nord-Ouest',angle: 315 }
+        { nom: '↑ Nord',       angle: 0   },
+        { nom: '↗ Nord-Est',   angle: 45  },
+        { nom: '→ Est',        angle: 90  },
+        { nom: '↘ Sud-Est',    angle: 135 },
+        { nom: '↓ Sud',        angle: 180 },
+        { nom: '↙ Sud-Ouest',  angle: 225 },
+        { nom: '← Ouest',      angle: 270 },
+        { nom: '↖ Nord-Ouest', angle: 315 }
     ];
 
     function distanceMetres(rssi) {
@@ -175,9 +193,8 @@ class WebHandler(BaseHTTPRequestHandler):
         return '📡';
     }
 
-    // Calcule la position GPS au bout d'une flèche
     function positionDirection(lat, lon, distMetres, angleDegres) {
-        var R = 111320; // mètres par degré
+        var R = 111320;
         var angleRad = angleDegres * Math.PI / 180;
         var dLat = (distMetres * Math.cos(angleRad)) / R;
         var dLon = (distMetres * Math.sin(angleRad)) / (R * Math.cos(lat * Math.PI / 180));
@@ -190,6 +207,28 @@ class WebHandler(BaseHTTPRequestHandler):
                 obj[id].forEach(function(l) { carte.removeLayer(l); });
             } else {
                 carte.removeLayer(obj[id]);
+            }
+        });
+    }
+
+    // ✅ Met à jour la position GPS toutes les 5 secondes
+    function actualiserGPS() {
+        fetch('/position')
+        .then(r => r.json())
+        .then(pos => {
+            LAT = pos.lat;
+            LON = pos.lon;
+            gps_fix = pos.fix;
+
+            marqueurRecepteur.setLatLng([LAT, LON]);
+
+            var statusDiv = document.getElementById('gps_status');
+            if (pos.fix) {
+                statusDiv.innerHTML = '📍 GPS OK : ' + LAT.toFixed(6) + '°N, ' + LON.toFixed(6) + '°E';
+                statusDiv.style.background = '#27ae60';
+            } else {
+                statusDiv.innerHTML = '📍 GPS : Recherche satellites...';
+                statusDiv.style.background = '#e67e22';
             }
         });
     }
@@ -207,7 +246,6 @@ class WebHandler(BaseHTTPRequestHandler):
             var nbAffiche = 0;
             var typesVus  = {};
 
-            // Nettoie tout
             nettoyerCouche(cercles);
             nettoyerCouche(fleches);
             nettoyerCouche(pointsCher);
@@ -229,56 +267,51 @@ class WebHandler(BaseHTTPRequestHandler):
                 typesVus[s.type] = (typesVus[s.type] || 0) + 1;
                 if (s.rssi > -60) urgence = true;
 
-                // ✅ Cercle zone de recherche
-                cercles[id] = L.circle([LAT, LON], {
+                // ✅ Utilise la position GPS réelle
+                var lat = s.lat || LAT;
+                var lon = s.lon || LON;
+
+                cercles[id] = L.circle([lat, lon], {
                     color:       col,
                     fillColor:   col,
-                    fillOpacity: 0.15,
+                    fillOpacity: 0.2,
                     radius:      dist,
                     weight:      3
                 }).addTo(carte)
                 .bindPopup(
                     '<b>🆘 ZONE DE RECHERCHE</b><br>' +
+                    iconeType(s.type) + ' ' + s.type + '<br>' +
                     '📡 ' + s.freq.toFixed(3) + ' MHz<br>' +
                     '🔋 RSSI: ' + s.rssi + ' dB<br>' +
-                    '📍 Distance: ~' + dist + 'm'
+                    '📍 Distance: ~' + dist + 'm<br>' +
+                    '🕐 ' + s.heure
                 );
 
-                // ✅ 8 flèches dans toutes les directions
                 fleches[id]    = [];
                 pointsCher[id] = [];
                 var dirTexte   = '<b>🧭 Directions à explorer :</b><br>';
 
                 directions.forEach(function(dir) {
-                    var pos = positionDirection(LAT, LON, dist, dir.angle);
+                    var pos = positionDirection(lat, lon, dist, dir.angle);
 
-                    // Flèche (ligne)
-                    var ligne = L.polyline([[LAT, LON], pos], {
-                        color:  col,
-                        weight: 3,
-                        opacity: 0.8
+                    var ligne = L.polyline([[lat, lon], pos], {
+                        color: col, weight: 2, opacity: 0.7
                     }).addTo(carte);
                     fleches[id].push(ligne);
 
-                    // Point "Vérifier ici" au bout de la flèche
                     var iconDir = L.divIcon({
-                        html: '<div style="background:' + col + ';color:black;padding:2px 5px;border-radius:4px;font-size:10px;font-weight:bold;white-space:nowrap;">' + dir.nom + '</div>',
+                        html: '<div style="background:' + col + ';color:black;padding:2px 4px;border-radius:3px;font-size:10px;font-weight:bold;">' + dir.nom + '</div>',
                         iconSize: [70, 20],
                         className: ''
                     });
-                    var ptCher = L.marker(pos, {icon: iconDir})
+                    var pt = L.marker(pos, {icon: iconDir})
                         .addTo(carte)
-                        .bindPopup(
-                            '<b>' + dir.nom + '</b><br>' +
-                            '🔍 Vérifier ici<br>' +
-                            '~' + dist + 'm dans cette direction'
-                        );
-                    pointsCher[id].push(ptCher);
+                        .bindPopup('<b>' + dir.nom + '</b><br>~' + dist + 'm');
+                    pointsCher[id].push(pt);
 
                     dirTexte += dir.nom + ' (~' + dist + 'm)<br>';
                 });
 
-                // Panneau latéral
                 var div = document.createElement('div');
                 div.className = 'signal ' + s.distance;
                 div.innerHTML =
@@ -292,7 +325,6 @@ class WebHandler(BaseHTTPRequestHandler):
                 liste.appendChild(div);
             });
 
-            // Résumé
             var resumeHtml = '<b>📊 ' + nbAffiche + ' signal(s) proche(s)</b><br>';
             Object.keys(typesVus).forEach(function(t) {
                 resumeHtml += iconeType(t) + ' ' + t + ' : ' + typesVus[t] + '<br>';
@@ -305,7 +337,9 @@ class WebHandler(BaseHTTPRequestHandler):
     }
 
     setInterval(actualiser, 2000);
+    setInterval(actualiserGPS, 5000);
     actualiser();
+    actualiserGPS();
 </script>
 </body>
 </html>
@@ -326,14 +360,19 @@ def ecouter_udp():
             rssi     = float(parts[3].split(":")[1].replace("dB","").strip())
             bw       = float(parts[4].split(":")[1].replace("kHz","").strip())
             distance = parts[5].split(":")[1].strip()
+
+            # ✅ Coordonnées GPS réelles
+            lat, lon, fix = gps.get_position()
+
             signal = {
                 "type":     type_sig,
                 "freq":     freq,
                 "rssi":     rssi,
                 "bw":       bw,
                 "distance": distance,
-                "lat":      LATITUDE,
-                "lon":      LONGITUDE,
+                "lat":      lat,
+                "lon":      lon,
+                "gps_fix":  fix,
                 "heure":    time.strftime("%H:%M:%S")
             }
             signaux.append(signal)
