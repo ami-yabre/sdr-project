@@ -76,7 +76,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.samp_rate = samp_rate = 10000000
+        self.samp_rate = samp_rate = 1000000
 
         ##################################################
         # Blocks
@@ -96,7 +96,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.uhd_usrp_source_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_source_0.set_gain(30, 0)
         self.qtgui_waterfall_sink_x_0 = qtgui.waterfall_sink_c(
-            1024, #size
+            4096, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
             868000000, #fc
             samp_rate, #bw
@@ -131,7 +131,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
 
         self.top_layout.addWidget(self._qtgui_waterfall_sink_x_0_win)
         self.qtgui_sink_x_0 = qtgui.sink_c(
-            1024, #fftsize
+            4096, #fftsize
             window.WIN_BLACKMAN_hARRIS, #wintype
             868000000, #fc
             samp_rate, #bw
@@ -149,7 +149,7 @@ class test_gnu(gr.top_block, Qt.QWidget):
 
         self.top_layout.addWidget(self._qtgui_sink_x_0_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
-            1024, #size
+            4096, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
             868000000, #fc
             samp_rate, #bw
@@ -192,13 +192,13 @@ class test_gnu(gr.top_block, Qt.QWidget):
         self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
         self.logpwrfft_x_0 = logpwrfft.logpwrfft_c(
             sample_rate=samp_rate,
-            fft_size=1024,
+            fft_size=4096,
             ref_scale=2,
             frame_rate=30,
             avg_alpha=0.1,
             average=True,
             shift=False)
-        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=868000000.0)
+        self.epy_block_0 = epy_block_0.blk(samp_rate=samp_rate, center_freq=868000000.0, usrp_source=self.uhd_usrp_source_0)
 
 
         ##################################################
