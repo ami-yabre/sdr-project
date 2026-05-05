@@ -1,12 +1,13 @@
 import serial
 import time
 import threading
+import os
 
 class GPSReader:
     def __init__(self, port='/dev/ttyUSB3', baudrate=115200):
         self.port     = port
         self.baudrate = baudrate
-        self.lat      = 47.5072  # coordonnées IUT par défaut
+        self.lat      = 47.5072
         self.lon      = 6.7961
         self.fix      = False
         self.running  = True
@@ -14,7 +15,6 @@ class GPSReader:
         print("GPS Reader démarré...")
 
     def _convertir(self, val, direction):
-        """Convertit DDMM.MMMM en degrés décimaux"""
         try:
             val = float(val)
             deg = int(val / 100)
@@ -29,6 +29,11 @@ class GPSReader:
     def _lire(self):
         while self.running:
             try:
+                # ✅ Si le module GPS n'est pas branché, attend sans erreur
+                if not os.path.exists(self.port):
+                    time.sleep(5)
+                    continue
+
                 s = serial.Serial(self.port, self.baudrate, timeout=3)
                 while self.running:
                     s.write(b'AT+CGPSINFO\r\n')
@@ -48,7 +53,6 @@ class GPSReader:
                                     self.fix  = True
                                     print(f"GPS OK: {lat:.6f}, {lon:.6f}")
             except Exception as e:
-                print(f"Erreur GPS: {e}")
                 time.sleep(5)
 
     def get_position(self):
