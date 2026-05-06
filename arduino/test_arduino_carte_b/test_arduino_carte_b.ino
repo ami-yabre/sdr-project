@@ -13,7 +13,6 @@ void setup() {
   digitalWrite(RFM95_RST, HIGH);
   Serial.begin(9600);
   delay(100);
-
   digitalWrite(RFM95_RST, LOW);
   delay(10);
   digitalWrite(RFM95_RST, HIGH);
@@ -23,23 +22,25 @@ void setup() {
     Serial.println("ERREUR init LoRa");
     while (1);
   }
-
   if (!rf95.setFrequency(RF_FREQUENCY)) {
     Serial.println("ERREUR frequence");
     while (1);
   }
 
-  // BW fixe 250 kHz
-  rf95.setSignalBandwidth(250000);
-  rf95.setTxPower(5, false);
-  Serial.println("CARTE B prete - BW 250kHz");
+  // ✅ SF7 + BW500kHz
+  rf95.setSpreadingFactor(7);
+  rf95.setSignalBandwidth(500000);
+  rf95.setCodingRate4(5);
+  rf95.setTxPower(10, false);
+
+  Serial.println("CARTE B prete - SF7 BW500 868.5MHz");
 }
 
 void loop() {
-  const char *msg = "CARTE_B_BW250";
-  Serial.println("Envoi : CARTE_B_BW250");
+  const char *msg = "CARTE_B_SF7_BW500";
+  Serial.println("Envoi...");
   rf95.send((uint8_t*)msg, strlen(msg));
   rf95.waitPacketSent();
-  Serial.println("Envoye OK");
-  delay(1200);
+  Serial.println("OK");
+  delay(3000);
 }

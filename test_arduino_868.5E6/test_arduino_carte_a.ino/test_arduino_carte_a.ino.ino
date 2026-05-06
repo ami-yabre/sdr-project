@@ -8,11 +8,6 @@
 
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
-// Les 3 largeurs de canal
-int bandwidths[] = {125000, 250000, 500000};
-String bw_names[] = {"BW125", "BW250", "BW500"};
-int bw_index = 0;
-
 void setup() {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
@@ -34,22 +29,20 @@ void setup() {
     while (1);
   }
 
-  rf95.setTxPower(5, false);
-  Serial.println("CARTE A prete");
+  // ✅ SF7 + BW125kHz + puissance 10mW
+  rf95.setSpreadingFactor(7);
+  rf95.setSignalBandwidth(125000);
+  rf95.setCodingRate4(5);
+  rf95.setTxPower(10, false);
+
+  Serial.println("CARTE A prete - SF7 BW125 868MHz");
 }
 
 void loop() {
-  // Change de BW à chaque envoi
-  rf95.setSignalBandwidth(bandwidths[bw_index]);
-
-  String msg = "CARTE_A_" + bw_names[bw_index];
-  Serial.println("Envoi : " + msg);
-
-  rf95.send((uint8_t*)msg.c_str(), msg.length());
+  const char *msg = "CARTE_A_SF7_BW125";
+  Serial.println("Envoi...");
+  rf95.send((uint8_t*)msg, strlen(msg));
   rf95.waitPacketSent();
-  Serial.println("Envoye OK - " + bw_names[bw_index]);
-
-  // Change de BW pour le prochain envoi
-  bw_index = (bw_index + 1) % 3;
-  delay(2000);
+  Serial.println("OK");
+  delay(3000);
 }
